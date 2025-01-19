@@ -25,175 +25,72 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: BLEHomePage(),
-    );
-  }
-}
-
-class BLEHomePage extends StatefulWidget {
-  @override
-  _BLEHomePageState createState() => _BLEHomePageState();
-}
-
-class _BLEHomePageState extends State<BLEHomePage> {
-  List<BluetoothDevice> devices = [];
-  bool isScanning = false;
-  
-  // Add your ESP32's service UUID here
-  final String serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b"; // Replace with your UUID
-
-  @override
-  void initState() {
-    super.initState();
-    startScan();
-  }
-
-  void startScan() async {
-    setState(() {
-      devices.clear();
-      isScanning = true;
-    });
-
-    try {
-      // Remove the service UUID filter temporarily for testing
-      await FlutterBluePlus.startScan(
-        timeout: Duration(seconds: 5),
-        // withServices: [Guid(serviceUuid)], // Comment this out temporarily
-      );
-      
-      FlutterBluePlus.scanResults.listen((results) {
-        for (ScanResult r in results) {
-          // Add debug printing
-          print('Found device: ${r.device.platformName} (${r.device.remoteId})');
-          print('RSSI: ${r.rssi}');
-          if (r.advertisementData.serviceUuids.isNotEmpty) {
-            print('Service UUIDs: ${r.advertisementData.serviceUuids}');
-          }
-          
-          if (!devices.contains(r.device)) {
-            setState(() {
-              devices.add(r.device);
-            });
-          }
-        }
-      });
-
-      // When scan completes
-      Future.delayed(Duration(seconds: 5), () {
-        stopScan();
-      });
-    } catch (e) {
-      print('Error scanning: $e');
-      stopScan();
-    }
-  }
-
-  void stopScan() {
-    FlutterBluePlus.stopScan();
-    setState(() {
-      isScanning = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("BLE Device Scanner"),
-        actions: [
-          IconButton(
-            icon: Icon(isScanning ? Icons.stop : Icons.refresh),
-            onPressed: isScanning ? stopScan : startScan,
-          ),
-        ],
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+        scaffoldBackgroundColor: Colors.white,
       ),
-      body: devices.isEmpty
-          ? Center(
-              child: isScanning
-                  ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text("Scanning for devices..."),
-                      ],
-                    )
-                  : Text("No devices found"),
-            )
-          : ListView.builder(
-              itemCount: devices.length,
-              itemBuilder: (context, index) {
-                BluetoothDevice device = devices[index];
-                return ListTile(
-                  leading: Icon(Icons.bluetooth),
-                  title: Text(device.platformName.isNotEmpty ? device.platformName : "Unnamed Device"),
-                  subtitle: Text(device.remoteId.toString()),
-                  trailing: StreamBuilder<BluetoothConnectionState>(
-                    stream: device.connectionState,
-                    initialData: BluetoothConnectionState.disconnected,
-                    builder: (c, snapshot) {
-                      if (snapshot.data == BluetoothConnectionState.connected) {
-                        return Icon(Icons.check_circle, color: Colors.green);
-                      }
-                      return ElevatedButton(
-                        child: Text('Connect'),
-                        onPressed: () async {
-                          try {
-                            await device.connect();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => DevicePage(device: device),
-                              ),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to connect to device'),
-                              ),
-                            );
-                          }
-                        },
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
+      home: HomePage(),
     );
   }
 }
 
-class DevicePage extends StatefulWidget {
-  final BluetoothDevice device;
-
-  DevicePage({required this.device});
-
+class HomePage extends StatefulWidget {
   @override
-  _DevicePageState createState() => _DevicePageState();
+  _HomePageState createState() => _HomePageState();
 }
 
-class _DevicePageState extends State<DevicePage> {
-  List<BluetoothService> services = [];
-  bool isLoading = true;
-  String characteristicValue = "No value yet";
+class _HomePageState extends State<HomePage> {
+  BluetoothDevice? connectedDevice;
+  String characteristicValue = "No data";
+  bool isScanning = false;
+  List<ScanResult> scanResults = [];
   
-  // These UUIDs match your ESP32 exactly
   final String serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
   final String characteristicUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
-  @override
-  void initState() {
-    super.initState();
-    connectAndRead();
+  void startScan() async {
+    setState(() {
+      isScanning = true;
+      scanResults.clear();
+    });
+
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: Duration(seconds: 4),
+        // Removed service UUID filter to show all devices
+      );
+
+      FlutterBluePlus.scanResults.listen((results) {
+        setState(() {
+          scanResults = results;
+        });
+      });
+
+      // Stop scanning after timeout
+      Future.delayed(Duration(seconds: 4), () {
+        FlutterBluePlus.stopScan();
+        setState(() {
+          isScanning = false;
+        });
+      });
+
+    } catch (e) {
+      print('Error scanning: $e');
+      setState(() {
+        isScanning = false;
+      });
+    }
   }
 
-  Future<void> connectAndRead() async {
+  Future<void> connectToDevice(BluetoothDevice device) async {
     try {
-      // Discover services
-      services = await widget.device.discoverServices();
+      await device.connect();
+      setState(() {
+        connectedDevice = device;
+      });
       
-      // Find our specific service and characteristic
+      // Discover services and start reading characteristic
+      List<BluetoothService> services = await device.discoverServices();
       for (BluetoothService service in services) {
         if (service.uuid.toString() == serviceUuid) {
           for (BluetoothCharacteristic characteristic in service.characteristics) {
@@ -201,21 +98,19 @@ class _DevicePageState extends State<DevicePage> {
               // Enable notifications
               await characteristic.setNotifyValue(true);
               
-              // Listen to the characteristic value updates
+              // Listen to updates
               characteristic.lastValueStream.listen((value) {
                 if (value.isNotEmpty) {
                   setState(() {
                     characteristicValue = String.fromCharCodes(value);
-                    print('Received value: $characteristicValue');
                   });
                 }
               });
               
-              // Read the initial value
+              // Read initial value
               final initialValue = await characteristic.read();
               setState(() {
                 characteristicValue = String.fromCharCodes(initialValue);
-                print('Initial value: $characteristicValue');
               });
             }
           }
@@ -223,13 +118,26 @@ class _DevicePageState extends State<DevicePage> {
       }
       
       setState(() {
-        isLoading = false;
+        isScanning = false;
       });
+
     } catch (e) {
-      print('Error: $e');
+      print('Error connecting: $e');
       setState(() {
-        characteristicValue = 'Error reading value: $e';
-        isLoading = false;
+        isScanning = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to connect')),
+      );
+    }
+  }
+
+  void disconnect() async {
+    if (connectedDevice != null) {
+      await connectedDevice!.disconnect();
+      setState(() {
+        connectedDevice = null;
+        characteristicValue = "No data";
       });
     }
   }
@@ -238,30 +146,143 @@ class _DevicePageState extends State<DevicePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Device: ${widget.device.platformName}"),
+        title: Text('Plant Monitor'),
+        centerTitle: true,
+        actions: [
+          if (!isScanning && connectedDevice == null)
+            IconButton(
+              icon: Icon(Icons.refresh),
+              onPressed: startScan,
+            ),
+        ],
       ),
-      body: Center(
-        child: isLoading
-            ? CircularProgressIndicator()
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Characteristic Value:',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    characteristicValue,
-                    style: TextStyle(fontSize: 24),
-                  ),
-                  SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: connectAndRead,
-                    child: Text('Refresh Value'),
-                  ),
-                ],
+      body: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Connection Status Card
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Icon(
+                      connectedDevice != null 
+                          ? Icons.bluetooth_connected 
+                          : Icons.bluetooth_disabled,
+                      size: 50,
+                      color: connectedDevice != null ? Colors.green : Colors.grey,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      connectedDevice != null
+                          ? 'Connected to: ${connectedDevice!.platformName}'
+                          : 'Not Connected',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    SizedBox(height: 16),
+                    if (connectedDevice != null)
+                      ElevatedButton(
+                        onPressed: disconnect,
+                        style: ElevatedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: Text('Disconnect', style: TextStyle(fontSize: 16)),
+                      ),
+                  ],
+                ),
               ),
+            ),
+            SizedBox(height: 16),
+            
+            // Device List or Sensor Data
+            Expanded(
+              child: connectedDevice == null
+                  ? Card(
+                      elevation: 4,
+                      child: isScanning
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text('Scanning for devices...'),
+                                ],
+                              ),
+                            )
+                          : scanResults.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text('No devices found'),
+                                      SizedBox(height: 16),
+                                      ElevatedButton(
+                                        onPressed: startScan,
+                                        child: Text('Scan Again'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: scanResults.length,
+                                  itemBuilder: (context, index) {
+                                    final result = scanResults[index];
+                                    return ListTile(
+                                      title: Text(
+                                        result.device.platformName.isEmpty
+                                            ? 'Unknown Device'
+                                            : result.device.platformName,
+                                      ),
+                                      subtitle: Text(result.device.remoteId.toString()),
+                                      trailing: ElevatedButton(
+                                        child: Text('Connect'),
+                                        onPressed: () => connectToDevice(result.device),
+                                      ),
+                                    );
+                                  },
+                                ),
+                    )
+                  : Card(
+                      elevation: 4,
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Sensor Data',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  characteristicValue,
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
