@@ -176,21 +176,62 @@ class DevicePage extends StatefulWidget {
 class _DevicePageState extends State<DevicePage> {
   List<BluetoothService> services = [];
   bool isLoading = true;
+  String characteristicValue = "No value yet";
+  
+  // These UUIDs match your ESP32 exactly
+  final String serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  final String characteristicUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
   @override
   void initState() {
     super.initState();
-    discoverServices();
+    connectAndRead();
   }
 
-  Future<void> discoverServices() async {
-    final bleService = BLEService();
-    final discoveredServices = await bleService.discoverServices(widget.device);
-    
-    setState(() {
-      services = discoveredServices;
-      isLoading = false;
-    });
+  Future<void> connectAndRead() async {
+    try {
+      // Discover services
+      services = await widget.device.discoverServices();
+      
+      // Find our specific service and characteristic
+      for (BluetoothService service in services) {
+        if (service.uuid.toString() == serviceUuid) {
+          for (BluetoothCharacteristic characteristic in service.characteristics) {
+            if (characteristic.uuid.toString() == characteristicUuid) {
+              // Enable notifications
+              await characteristic.setNotifyValue(true);
+              
+              // Listen to the characteristic value updates
+              characteristic.lastValueStream.listen((value) {
+                if (value.isNotEmpty) {
+                  setState(() {
+                    characteristicValue = String.fromCharCodes(value);
+                    print('Received value: $characteristicValue');
+                  });
+                }
+              });
+              
+              // Read the initial value
+              final initialValue = await characteristic.read();
+              setState(() {
+                characteristicValue = String.fromCharCodes(initialValue);
+                print('Initial value: $characteristicValue');
+              });
+            }
+          }
+        }
+      }
+      
+      setState(() {
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error: $e');
+      setState(() {
+        characteristicValue = 'Error reading value: $e';
+        isLoading = false;
+      });
+    }
   }
 
   @override
@@ -199,42 +240,29 @@ class _DevicePageState extends State<DevicePage> {
       appBar: AppBar(
         title: Text("Device: ${widget.device.platformName}"),
       ),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: services.length,
-              itemBuilder: (context, index) {
-                final service = services[index];
-                return ExpansionTile(
-                  title: Text('Service: ${service.uuid}'),
-                  children: service.characteristics.map((c) {
-                    return ListTile(
-                      title: Text('Characteristic: ${c.uuid}'),
-                      subtitle: Text('Properties: ${c.properties.toString()}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (c.properties.read)
-                            IconButton(
-                              icon: Icon(Icons.refresh),
-                              onPressed: () async {
-                                await c.read();
-                              },
-                            ),
-                          if (c.properties.write)
-                            IconButton(
-                              icon: Icon(Icons.edit),
-                              onPressed: () {
-                                // Add write functionality here
-                              },
-                            ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
+      body: Center(
+        child: isLoading
+            ? CircularProgressIndicator()
+            : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Characteristic Value:',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    characteristicValue,
+                    style: TextStyle(fontSize: 24),
+                  ),
+                  SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: connectAndRead,
+                    child: Text('Refresh Value'),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
