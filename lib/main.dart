@@ -44,6 +44,8 @@ class _HomePageState extends State<HomePage> {
   String characteristicValue = "No data";
   bool isScanning = false;
   List<ScanResult> scanResults = [];
+  String temperatureValue = "N/A";
+  String humidityValue = "N/A";
   
   final String serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
   final String characteristicUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
@@ -57,7 +59,7 @@ class _HomePageState extends State<HomePage> {
     try {
       await FlutterBluePlus.startScan(
         timeout: Duration(seconds: 4),
-        // Removed service UUID filter to show all devices
+        // No service UUID filter
       );
 
       FlutterBluePlus.scanResults.listen((results) {
@@ -101,8 +103,25 @@ class _HomePageState extends State<HomePage> {
               // Listen to updates
               characteristic.lastValueStream.listen((value) {
                 if (value.isNotEmpty) {
+                  String data = String.fromCharCodes(value);
+                  print('Received BLE data: $data');
                   setState(() {
-                    characteristicValue = String.fromCharCodes(value);
+                    characteristicValue = data;
+                    
+                    // Parse RSSI and Time values
+                    if (data.contains('RSSI:') && data.contains('Time:')) {
+                      // Extract RSSI value
+                      final rssiMatch = RegExp(r'RSSI: ([-\d]+)').firstMatch(data);
+                      if (rssiMatch != null) {
+                        temperatureValue = rssiMatch.group(1)!;
+                      }
+                      
+                      // Extract Time value
+                      final timeMatch = RegExp(r'Time:(\d+)ms').firstMatch(data);
+                      if (timeMatch != null) {
+                        humidityValue = timeMatch.group(1)!;
+                      }
+                    }
                   });
                 }
               });
@@ -125,10 +144,17 @@ class _HomePageState extends State<HomePage> {
       print('Error connecting: $e');
       setState(() {
         isScanning = false;
+        connectedDevice = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to connect')),
+        SnackBar(content: Text('Failed to connect: ${e.toString()}')),
       );
+      // Try to disconnect in case of partial connection
+      try {
+        await device.disconnect();
+      } catch (e) {
+        print('Error disconnecting: $e');
+      }
     }
   }
 
@@ -161,45 +187,44 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Connection Status Card
-            Card(
-              elevation: 4,
-              child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Icon(
-                      connectedDevice != null 
-                          ? Icons.bluetooth_connected 
-                          : Icons.bluetooth_disabled,
-                      size: 50,
-                      color: connectedDevice != null ? Colors.green : Colors.grey,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      connectedDevice != null
-                          ? 'Connected to: ${connectedDevice!.platformName}'
-                          : 'Not Connected',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    SizedBox(height: 16),
-                    if (connectedDevice != null)
-                      ElevatedButton(
-                        onPressed: disconnect,
+            // Updated Connection Status Card
+            if (connectedDevice == null)
+              Card(
+                elevation: 4,
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.bluetooth_searching,
+                        size: 64,
+                        color: Colors.blue,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Connect to Plant Monitor',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        icon: Icon(Icons.search),
+                        label: Text('Start Scanning'),
                         style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                          padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(30),
                           ),
                         ),
-                        child: Text('Disconnect', style: TextStyle(fontSize: 16)),
+                        onPressed: startScan,
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            SizedBox(height: 16),
-            
+
             // Device List or Sensor Data
             Expanded(
               child: connectedDevice == null
@@ -249,37 +274,114 @@ class _HomePageState extends State<HomePage> {
                                   },
                                 ),
                     )
-                  : Card(
-                      elevation: 4,
-                      child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Sensor Data',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
+                  : Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Connected to: ${connectedDevice!.platformName}',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                          ),
+                          SizedBox(height: 16),
+                          Expanded(
+                            child: GridView.count(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                              children: [
+                                // Temperature Card (showing RSSI)
+                                _buildSensorCard(
+                                  icon: Icons.thermostat_outlined,
+                                  title: 'RSSI',
+                                  value: temperatureValue,
+                                  unit: ' dBm',
+                                  color: Colors.orange,
+                                ),
+                                // Humidity Card (showing Time)
+                                _buildSensorCard(
+                                  icon: Icons.water_drop_outlined,
+                                  title: 'Time',
+                                  value: humidityValue,
+                                  unit: ' ms',
+                                  color: Colors.blue,
+                                ),
+                                // Light Card
+                                _buildSensorCard(
+                                  icon: Icons.light_mode_outlined,
+                                  title: 'Light',
+                                  value: 'N/A',
+                                  unit: 'lux',
+                                  color: Colors.amber,
+                                ),
+                                // Soil Moisture Card
+                                _buildSensorCard(
+                                  icon: Icons.grass_outlined,
+                                  title: 'Soil Moisture',
+                                  value: 'N/A',
+                                  unit: '%',
+                                  color: Colors.green,
+                                ),
+                              ],
                             ),
-                            SizedBox(height: 16),
-                            Expanded(
-                              child: Center(
-                                child: Text(
-                                  characteristicValue,
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.green,
-                                  ),
+                          ),
+                          SizedBox(height: 16),
+                          Center(
+                            child: ElevatedButton.icon(
+                              icon: Icon(Icons.bluetooth_disabled),
+                              label: Text('Disconnect'),
+                              style: ElevatedButton.styleFrom(
+                                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
                                 ),
                               ),
+                              onPressed: disconnect,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSensorCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required String unit,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 40, color: color),
+            SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '$value$unit',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
             ),
           ],
         ),
