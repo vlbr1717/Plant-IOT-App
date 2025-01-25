@@ -56,10 +56,23 @@ class _HomePageState extends State<HomePage> {
       scanResults.clear();
     });
 
+    // Disconnect any existing device
+    if (connectedDevice != null) {
+      await connectedDevice!.disconnect();
+      setState(() {
+        connectedDevice = null;
+        characteristicValue = "No data";
+      });
+    }
+
     try {
+      // Stop any existing scan
+      await FlutterBluePlus.stopScan();
+      await Future.delayed(Duration(milliseconds: 500));
+
       await FlutterBluePlus.startScan(
         timeout: Duration(seconds: 4),
-        // No service UUID filter
+        androidUsesFineLocation: true,
       );
 
       FlutterBluePlus.scanResults.listen((results) {
@@ -68,7 +81,6 @@ class _HomePageState extends State<HomePage> {
         });
       });
 
-      // Stop scanning after timeout
       Future.delayed(Duration(seconds: 4), () {
         FlutterBluePlus.stopScan();
         setState(() {
@@ -86,54 +98,100 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> connectToDevice(BluetoothDevice device) async {
     try {
-      await device.connect();
+      // First disconnect any existing connections
+      if (connectedDevice != null) {
+        await connectedDevice!.disconnect();
+        setState(() {
+          connectedDevice = null;
+          characteristicValue = "No data";
+        });
+      }
+
+      // Add a delay before connecting
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Connect with auto-connect set to false and timeout
+      await device.connect(
+        timeout: Duration(seconds: 5),
+        autoConnect: false,
+      ).catchError((error) {
+        print('Connection error: $error');
+        throw error;
+      });
+
       setState(() {
         connectedDevice = device;
       });
+
+      // Add delay before service discovery
+      await Future.delayed(Duration(milliseconds: 1000));
       
-      // Discover services and start reading characteristic
+      // Discover services
       List<BluetoothService> services = await device.discoverServices();
+      bool foundService = false;
+      
       for (BluetoothService service in services) {
-        if (service.uuid.toString() == serviceUuid) {
+        if (service.uuid.toString().toLowerCase() == serviceUuid.toLowerCase()) {
+          foundService = true;
           for (BluetoothCharacteristic characteristic in service.characteristics) {
-            if (characteristic.uuid.toString() == characteristicUuid) {
-              // Enable notifications
-              await characteristic.setNotifyValue(true);
-              
-              // Listen to updates
-              characteristic.lastValueStream.listen((value) {
-                if (value.isNotEmpty) {
-                  String data = String.fromCharCodes(value);
-                  print('Received BLE data: $data');
-                  setState(() {
-                    characteristicValue = data;
-                    
-                    // Parse RSSI and Time values
-                    if (data.contains('RSSI:') && data.contains('Time:')) {
-                      // Extract RSSI value
-                      final rssiMatch = RegExp(r'RSSI: ([-\d]+)').firstMatch(data);
-                      if (rssiMatch != null) {
-                        temperatureValue = rssiMatch.group(1)!;
-                      }
-                      
-                      // Extract Time value
-                      final timeMatch = RegExp(r'Time:(\d+)ms').firstMatch(data);
-                      if (timeMatch != null) {
-                        humidityValue = timeMatch.group(1)!;
-                      }
+            if (characteristic.uuid.toString().toLowerCase() == characteristicUuid.toLowerCase()) {
+              try {
+                // Disable notifications first
+                await characteristic.setNotifyValue(false);
+                await Future.delayed(Duration(milliseconds: 500));
+                
+                // Then enable notifications
+                await characteristic.setNotifyValue(true);
+                
+                // Listen to updates
+                characteristic.lastValueStream.listen(
+                  (value) {
+                    if (value.isNotEmpty) {
+                      String data = String.fromCharCodes(value);
+                      print('Received BLE data: $data');
+                      setState(() {
+                        characteristicValue = data;
+                        // Parse RSSI and Time values
+                        if (data.contains('RSSI:') && data.contains('Time:')) {
+                          final rssiMatch = RegExp(r'RSSI: ([-\d]+)').firstMatch(data);
+                          if (rssiMatch != null) {
+                            temperatureValue = rssiMatch.group(1)!;
+                          }
+                          final timeMatch = RegExp(r'Time:(\d+)ms').firstMatch(data);
+                          if (timeMatch != null) {
+                            humidityValue = timeMatch.group(1)!;
+                          }
+                        }
+                      });
                     }
+                  },
+                  onError: (error) {
+                    print('Notification error: $error');
+                  },
+                );
+                
+                // Read initial value
+                try {
+                  final initialValue = await characteristic.read();
+                  setState(() {
+                    characteristicValue = String.fromCharCodes(initialValue);
                   });
+                } catch (e) {
+                  print('Error reading initial value: $e');
                 }
-              });
-              
-              // Read initial value
-              final initialValue = await characteristic.read();
-              setState(() {
-                characteristicValue = String.fromCharCodes(initialValue);
-              });
+              } catch (e) {
+                print('Error setting up characteristic: $e');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error setting up notifications')),
+                );
+              }
             }
           }
         }
+      }
+      
+      if (!foundService) {
+        throw Exception('Required service not found');
       }
       
       setState(() {
