@@ -81,8 +81,16 @@ class _HomePageState extends State<HomePage> {
   int dataPointCounter = 0;
   final int maxDataPoints = 50;
 
-  // Add this stream controller at the top of _HomePageState
-  final StreamController<List<FlSpot>> _rssiStreamController = StreamController<List<FlSpot>>.broadcast();
+  // Create separate stream controllers for each metric
+  final Map<String, StreamController<List<FlSpot>>> _streamControllers = {
+    'temp': StreamController<List<FlSpot>>.broadcast(),
+    'humidity': StreamController<List<FlSpot>>.broadcast(),
+    'light': StreamController<List<FlSpot>>.broadcast(),
+    'soil': StreamController<List<FlSpot>>.broadcast(),
+    'water': StreamController<List<FlSpot>>.broadcast(),
+    'rssi': StreamController<List<FlSpot>>.broadcast(),
+    'time': StreamController<List<FlSpot>>.broadcast(),
+  };
 
   void startScan() async {
     setState(() {
@@ -228,9 +236,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Add the _showGraph method
+  // Update the _showGraph method to use the correct metric key
   void _showGraph(String value, String title, Color color) {
-    List<FlSpot> history = valueHistory[title.toLowerCase()] ?? [];
+    String metricKey = title.toLowerCase().replaceAll(' ', '_');
+    List<FlSpot> history = valueHistory[metricKey] ?? [];
     
     showModalBottomSheet(
       context: context,
@@ -255,10 +264,13 @@ class _HomePageState extends State<HomePage> {
             SizedBox(height: 16),
             Expanded(
               child: StreamBuilder<List<FlSpot>>(
-                stream: _rssiStreamController.stream,
+                stream: _streamControllers[metricKey]?.stream,
                 initialData: history,
                 builder: (context, snapshot) {
                   final data = snapshot.data ?? [];
+                  if (data.isEmpty) {
+                    return Center(child: Text('No data available'));
+                  }
                   return LineChart(
                     LineChartData(
                       gridData: FlGridData(show: true),
@@ -274,7 +286,7 @@ class _HomePageState extends State<HomePage> {
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 50,
-                            interval: 10,
+                            interval: getYAxisInterval(metricKey),
                           ),
                         ),
                         topTitles: AxisTitles(
@@ -285,10 +297,10 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       borderData: FlBorderData(show: true),
-                      minX: data.isEmpty ? 0 : data.first.x,
-                      maxX: data.isEmpty ? 0 : data.last.x,
-                      minY: -100,
-                      maxY: 0,
+                      minX: data.first.x,
+                      maxX: data.last.x,
+                      minY: getMinY(metricKey),
+                      maxY: getMaxY(metricKey),
                       lineBarsData: [
                         LineChartBarData(
                           spots: data,
@@ -314,6 +326,59 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Add helper method for Y-axis interval
+  double getYAxisInterval(String metric) {
+    switch (metric) {
+      case 'rssi':
+        return 10;
+      case 'humidity':
+      case 'soil':
+      case 'water':
+        return 20;
+      case 'temp':
+        return 5;
+      case 'light':
+        return 200;
+      default:
+        return 10;
+    }
+  }
+
+  // Helper methods for Y-axis ranges
+  double getMinY(String metric) {
+    switch (metric) {
+      case 'rssi':
+        return -100;
+      case 'humidity':
+      case 'soil':
+      case 'water':
+        return 0;
+      case 'temp':
+        return 0;
+      case 'light':
+        return 0;
+      default:
+        return 0;
+    }
+  }
+
+  double getMaxY(String metric) {
+    switch (metric) {
+      case 'rssi':
+        return 0;
+      case 'humidity':
+      case 'soil':
+      case 'water':
+        return 100;
+      case 'temp':
+        return 50;
+      case 'light':
+        return 1000;
+      default:
+        return 100;
+    }
+  }
+
   // Update the cleanValue method to also remove duplicate units
   String cleanValue(String value, String type) {
     String cleaned = value;
@@ -329,9 +394,12 @@ class _HomePageState extends State<HomePage> {
 
   // Update the handleCharacteristicValue method
   void handleCharacteristicValue(BluetoothCharacteristic characteristic, String data) {
-    switch (characteristic.uuid.toString()) {
+    print('Received data for ${characteristic.uuid}: $data'); // Debug print
+    switch (characteristic.uuid.toString().toLowerCase()) {
       case PLANT_TYPE_UUID:
-        plantTypeValue = cleanValue(data, 'plant');
+        setState(() {
+          plantTypeValue = data.trim();
+        });
         break;
       case TIME_UUID:
         timeValue = cleanValue(data, 'time');
@@ -358,26 +426,31 @@ class _HomePageState extends State<HomePage> {
         updateHistory('temp', cleanValue(data, 'temp'));
         break;
       case LIGHT_UUID:
-        lightValue = cleanValue(data, 'light');
-        updateHistory('light', cleanValue(data, 'light'));
+        setState(() {
+          lightValue = cleanValue(data, 'light');
+          updateHistory('light', cleanValue(data, 'light'));
+        });
         break;
     }
   }
 
-  // Add method to update history
+  // Update the updateHistory method to properly handle different metrics
   void updateHistory(String metric, String value) {
     try {
-      double numValue = double.parse(value);
-      List<FlSpot> history = valueHistory[metric] ?? [];
+      // Remove any non-numeric characters except minus sign and decimal point
+      String cleanedValue = value.replaceAll(RegExp(r'[^0-9.-]'), '');
+      double numValue = double.parse(cleanedValue);
+      
+      List<FlSpot> history = valueHistory[metric.toLowerCase()] ?? [];
       history.add(FlSpot(dataPointCounter.toDouble(), numValue));
       if (history.length > maxDataPoints) {
         history.removeAt(0);
       }
-      valueHistory[metric] = history;
+      valueHistory[metric.toLowerCase()] = history;
+      _streamControllers[metric.toLowerCase()]?.add(history);
       dataPointCounter++;
-      _rssiStreamController.add(history);
     } catch (e) {
-      print('Error updating history for $metric: $e');
+      print('Error updating history for $metric with value $value: $e');
     }
   }
 
@@ -588,7 +661,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Update the _buildSensorCard widget
+  // Update the _buildSensorCard widget to handle dynamic text sizing
   Widget _buildSensorCard({
     required IconData icon,
     required String title,
@@ -619,12 +692,15 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               SizedBox(height: 8),
-              Text(
-                value != "N/A" ? value + unit : "N/A",
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value != "N/A" ? value + unit : "N/A",
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
                 ),
               ),
             ],
@@ -634,10 +710,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Add dispose method to clean up the stream controller
+  // Update dispose method to close all stream controllers
   @override
   void dispose() {
-    _rssiStreamController.close();
+    for (var controller in _streamControllers.values) {
+      controller.close();
+    }
     super.dispose();
   }
 }
