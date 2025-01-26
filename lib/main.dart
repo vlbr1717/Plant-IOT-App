@@ -300,19 +300,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             )
                           : scanResults.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text('No devices found'),
-                                      SizedBox(height: 16),
-                                      ElevatedButton(
-                                        onPressed: startScan,
-                                        child: Text('Scan Again'),
-                                      ),
-                                    ],
-                                  ),
-                                )
+                              ? Container()
                               : ListView.builder(
                                   itemCount: scanResults.length,
                                   itemBuilder: (context, index) {
@@ -447,3 +435,4 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
