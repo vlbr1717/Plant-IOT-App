@@ -47,8 +47,9 @@ class _HomePageState extends State<HomePage> {
   bool isScanning = false;
   List<ScanResult> scanResults = [];
   
-  // Make UUIDs constant for switch cases
-  static const String SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  // Update UUIDs to match new structure
+  static const String CONNECTION_SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  static const String SENSOR_SERVICE_UUID = "8d0784b6-2223-441a-9816-7739ce86b839";
   static const String PLANT_TYPE_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
   static const String TIME_UUID = "15dfb155-438b-4d15-a71a-7d643b6f4f14";
   static const String RSSI_UUID = "9860d00a-0c05-4a93-bdf3-e4ebf89dcbd8";
@@ -170,38 +171,43 @@ class _HomePageState extends State<HomePage> {
       
       // Discover services
       List<BluetoothService> services = await device.discoverServices();
-      bool foundService = false;
+      bool foundConnectionService = false;
+      bool foundSensorService = false;
       
       for (BluetoothService service in services) {
-        if (service.uuid.toString().toLowerCase() == SERVICE_UUID.toLowerCase()) {
-          foundService = true;
+        String serviceUuid = service.uuid.toString().toLowerCase();
+        
+        if (serviceUuid == CONNECTION_SERVICE_UUID.toLowerCase()) {
+          foundConnectionService = true;
+          // Handle connection service characteristics
           for (BluetoothCharacteristic characteristic in service.characteristics) {
-            try {
-              await characteristic.setNotifyValue(true);
-              characteristic.lastValueStream.listen((value) {
-                if (value.isNotEmpty) {
-                  String data = String.fromCharCodes(value);
-                  setState(() {
-                    handleCharacteristicValue(characteristic, data);
-                  });
-                }
-              });
-
-              // Read initial value
-              final initialValue = await characteristic.read();
-              setState(() {
-                String data = String.fromCharCodes(initialValue);
-                handleCharacteristicValue(characteristic, data);
-              });
-            } catch (e) {
-              print('Error setting up characteristic ${characteristic.uuid}: $e');
+            String charUuid = characteristic.uuid.toString().toLowerCase();
+            if ([PLANT_TYPE_UUID.toLowerCase(), 
+                 TIME_UUID.toLowerCase(), 
+                 RSSI_UUID.toLowerCase()].contains(charUuid)) {
+              await setupCharacteristic(characteristic);
+            }
+          }
+        }
+        
+        if (serviceUuid == SENSOR_SERVICE_UUID.toLowerCase()) {
+          foundSensorService = true;
+          // Handle sensor service characteristics
+          for (BluetoothCharacteristic characteristic in service.characteristics) {
+            String charUuid = characteristic.uuid.toString().toLowerCase();
+            if ([SOIL_UUID.toLowerCase(),
+                 WATER_UUID.toLowerCase(),
+                 HUMIDITY_UUID.toLowerCase(),
+                 TEMP_UUID.toLowerCase(),
+                 LIGHT_UUID.toLowerCase()].contains(charUuid)) {
+              await setupCharacteristic(characteristic);
             }
           }
         }
       }
       
-      if (!foundService) {
-        throw Exception('Required service not found');
+      if (!foundConnectionService || !foundSensorService) {
+        throw Exception('Required services not found');
       }
       
       setState(() {
@@ -223,6 +229,30 @@ class _HomePageState extends State<HomePage> {
       } catch (e) {
         print('Error disconnecting: $e');
       }
+    }
+  }
+
+  // Add helper method to setup characteristics
+  Future<void> setupCharacteristic(BluetoothCharacteristic characteristic) async {
+    try {
+      await characteristic.setNotifyValue(true);
+      characteristic.lastValueStream.listen((value) {
+        if (value.isNotEmpty) {
+          String data = String.fromCharCodes(value);
+          setState(() {
+            handleCharacteristicValue(characteristic, data);
+          });
+        }
+      });
+
+      // Read initial value
+      final initialValue = await characteristic.read();
+      setState(() {
+        String data = String.fromCharCodes(initialValue);
+        handleCharacteristicValue(characteristic, data);
+      });
+    } catch (e) {
+      print('Error setting up characteristic ${characteristic.uuid}: $e');
     }
   }
 
@@ -441,11 +471,39 @@ class _HomePageState extends State<HomePage> {
       String cleanedValue = value.replaceAll(RegExp(r'[^0-9.-]'), '');
       double numValue = double.parse(cleanedValue);
       
+      // Normalize values based on metric type
+      switch (metric.toLowerCase()) {
+        case 'rssi':
+          // RSSI values are typically negative
+          numValue = numValue.clamp(-100.0, 0.0);
+          break;
+        case 'humidity':
+        case 'soil':
+        case 'water':
+          // Percentage values should be between 0-100
+          numValue = numValue.clamp(0.0, 100.0);
+          break;
+        case 'temp':
+          // Temperature typically between 0-50°C
+          numValue = numValue.clamp(0.0, 50.0);
+          break;
+        case 'light':
+          // Light values can range from 0-1000+ lux
+          numValue = numValue.clamp(0.0, 1000.0);
+          break;
+        case 'time':
+          // Time values (in ms) don't need clamping
+          break;
+      }
+      
       List<FlSpot> history = valueHistory[metric.toLowerCase()] ?? [];
       history.add(FlSpot(dataPointCounter.toDouble(), numValue));
+      
+      // Keep only the last maxDataPoints points
       if (history.length > maxDataPoints) {
         history.removeAt(0);
       }
+      
       valueHistory[metric.toLowerCase()] = history;
       _streamControllers[metric.toLowerCase()]?.add(history);
       dataPointCounter++;
