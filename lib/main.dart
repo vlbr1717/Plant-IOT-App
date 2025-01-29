@@ -127,7 +127,6 @@ class _HomePageState extends State<HomePage> {
     'soil': [],
     'water': [],
     'rssi': [],
-    'time': [],
   };
   int dataPointCounter = 0;
   final int maxDataPoints = 50;
@@ -140,7 +139,6 @@ class _HomePageState extends State<HomePage> {
     'soil': StreamController<List<FlSpot>>.broadcast(),
     'water': StreamController<List<FlSpot>>.broadcast(),
     'rssi': StreamController<List<FlSpot>>.broadcast(),
-    'time': StreamController<List<FlSpot>>.broadcast(),
   };
 
   bool isDevelopmentMode = true;
@@ -769,7 +767,6 @@ class _HomePageState extends State<HomePage> {
                                   value: timeValue,
                                   unit: 'ms',
                                   color: Colors.grey,
-                                  onTap: () => _showGraph(timeValue, 'Time', Colors.grey),
                                 ),
                                 // Plant Type Box
                                 _buildSensorCard(
