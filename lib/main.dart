@@ -137,6 +137,7 @@ class _HomePageState extends State<HomePage> {
   static const String HUMIDITY_UUID = "bcefab83-bc07-4601-bd67-973056e7ab40";
   static const String TEMP_UUID = "021c8554-0292-4781-83db-e0e480d9b447";
   static const String LIGHT_UUID = "71cca481-acbc-47c0-b379-dfc5de3e2db5";
+  static const String PUMP_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a9"; // Example UUID, replace with your actual pump UUID
 
   // Values for each metric (only declare each variable once)
   String plantTypeValue = "N/A";
@@ -175,6 +176,9 @@ class _HomePageState extends State<HomePage> {
 
   // Add this list at the class level in _HomePageState
   final List<String> plantTypes = ['Rose', 'Cactus', 'Fern', 'Orchid', 'Succulent'];
+
+  // Add a state variable for pump status
+  bool isPumpOn = false;
 
   void startScan() async {
     setState(() {
@@ -813,20 +817,18 @@ class _HomePageState extends State<HomePage> {
                                   color: Colors.purple,
                                   onTap: () => _showGraph(rssiValue, 'RSSI', Colors.purple),
                                 ),
-                                // Time Box
-                                _buildSensorCard(
-                                  icon: Icons.access_time,
-                                  title: 'Time',
-                                  value: timeValue,
-                                  unit: 'ms',
-                                  color: Colors.grey,
-                                ),
                                 // Plant Type Box
                                 _buildPlantTypeCard(
                                   icon: Icons.local_florist,
                                   title: 'Plant Type',
                                   value: plantTypeValue,
                                   color: Colors.teal,
+                                ),
+                                // Add Pump Control where Plant Type was
+                                _buildPumpControlCard(
+                                  icon: Icons.water_drop,
+                                  title: 'Pump Control',
+                                  color: Colors.blue,
                                 ),
                               ],
                             ),
@@ -1027,6 +1029,81 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  // Add this new method for the pump control card
+  Widget _buildPumpControlCard({
+    required IconData icon,
+    required String title,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            isPumpOn = !isPumpOn;
+            if (!isDevelopmentMode && connectedDevice != null) {
+              _sendPumpCommand(isPumpOn);
+            }
+          });
+        },
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 40, color: color),
+              SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 8),
+              Switch(
+                value: isPumpOn,
+                onChanged: (bool value) {
+                  setState(() {
+                    isPumpOn = value;
+                    if (!isDevelopmentMode && connectedDevice != null) {
+                      _sendPumpCommand(isPumpOn);
+                    }
+                  });
+                },
+                activeColor: color,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Add method to send pump command via BLE
+  Future<void> _sendPumpCommand(bool turnOn) async {
+    try {
+      if (connectedDevice != null) {
+        List<BluetoothService> services = await connectedDevice!.discoverServices();
+        for (var service in services) {
+          var characteristics = service.characteristics;
+          for (BluetoothCharacteristic c in characteristics) {
+            if (c.uuid.toString() == PUMP_UUID) {
+              await c.write([turnOn ? 1 : 0]);
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error sending pump command: $e');
+    }
   }
 }
 
