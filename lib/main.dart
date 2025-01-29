@@ -71,6 +71,36 @@ class SimulatedDataService {
   }
 }
 
+// Move MetricStats class to top-level (before HomePage class)
+class MetricStats {
+  final double min;
+  final double max;
+  final double avg;
+
+  MetricStats({required this.min, required this.max, required this.avg});
+
+  static MetricStats calculateStats(List<FlSpot> data) {
+    if (data.isEmpty) {
+      return MetricStats(min: 0, max: 0, avg: 0);
+    }
+    double sum = 0;
+    double min = data[0].y;
+    double max = data[0].y;
+    
+    for (var spot in data) {
+      sum += spot.y;
+      if (spot.y < min) min = spot.y;
+      if (spot.y > max) max = spot.y;
+    }
+    
+    return MetricStats(
+      min: min,
+      max: max,
+      avg: sum / data.length,
+    );
+  }
+}
+
 void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
@@ -328,13 +358,12 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Update the _showGraph method to handle the metric keys correctly
+  // Update the _showGraph method
   void _showGraph(String value, String title, Color color) {
-    // Convert title to metric key format
     String metricKey = title.toLowerCase().replaceAll(' ', '_')
-                           .replaceAll('moisture', '')  // Remove 'moisture' from 'soil moisture'
-                           .replaceAll('level', '')     // Remove 'level' from 'water level'
-                           .replaceAll('temperature', 'temp'); // Convert 'temperature' to 'temp'
+                           .replaceAll('moisture', '')
+                           .replaceAll('level', '')
+                           .replaceAll('temperature', 'temp');
     
     List<FlSpot> history = valueHistory[metricKey] ?? [];
     
@@ -368,51 +397,82 @@ class _HomePageState extends State<HomePage> {
                   if (data.isEmpty) {
                     return Center(child: Text('No data available'));
                   }
-                  return LineChart(
-                    LineChartData(
-                      gridData: FlGridData(show: true),
-                      titlesData: FlTitlesData(
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 30,
-                            interval: 5,
+
+                  // Calculate statistics
+                  final stats = MetricStats.calculateStats(data);
+                  
+                  // Calculate Y-axis range with 10% padding
+                  final yPadding = (stats.max - stats.min) * 0.1;
+                  final minY = stats.min - yPadding;
+                  final maxY = stats.max + yPadding;
+                  
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: LineChart(
+                          LineChartData(
+                            gridData: FlGridData(show: true),
+                            titlesData: FlTitlesData(
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 30,
+                                  interval: 5,
+                                ),
+                              ),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 50,
+                                  interval: (maxY - minY) / 5, // Dynamic interval
+                                ),
+                              ),
+                              topTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                              rightTitles: AxisTitles(
+                                sideTitles: SideTitles(showTitles: false),
+                              ),
+                            ),
+                            borderData: FlBorderData(show: true),
+                            minX: data.first.x,
+                            maxX: data.last.x,
+                            minY: minY,
+                            maxY: maxY,
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: data,
+                                isCurved: true,
+                                color: color,
+                                barWidth: 3,
+                                isStrokeCapRound: true,
+                                dotData: FlDotData(show: false),
+                                belowBarData: BarAreaData(
+                                  show: true,
+                                  color: color.withOpacity(0.2),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 50,
-                            interval: getYAxisInterval(metricKey),
-                          ),
-                        ),
-                        topTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
                         ),
                       ),
-                      borderData: FlBorderData(show: true),
-                      minX: data.first.x,
-                      maxX: data.last.x,
-                      minY: getMinY(metricKey),
-                      maxY: getMaxY(metricKey),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: data,
-                          isCurved: true,
-                          color: color,
-                          barWidth: 3,
-                          isStrokeCapRound: true,
-                          dotData: FlDotData(show: false),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: color.withOpacity(0.2),
-                          ),
+                      // Statistics panel
+                      Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ],
-                    ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildStatItem('Min', stats.min.toStringAsFixed(1), color),
+                            _buildStatItem('Avg', stats.avg.toStringAsFixed(1), color),
+                            _buildStatItem('Max', stats.max.toStringAsFixed(1), color),
+                          ],
+                        ),
+                      ),
+                    ],
                   );
                 },
               ),
@@ -423,57 +483,29 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Add helper method for Y-axis interval
-  double getYAxisInterval(String metric) {
-    switch (metric) {
-      case 'rssi':
-        return 10;
-      case 'humidity':
-      case 'soil':
-      case 'water':
-        return 20;
-      case 'temp':
-        return 5;
-      case 'light':
-        return 200;
-      default:
-        return 10;
-    }
-  }
-
-  // Helper methods for Y-axis ranges
-  double getMinY(String metric) {
-    switch (metric) {
-      case 'rssi':
-        return -100;
-      case 'humidity':
-      case 'soil':
-      case 'water':
-        return 0;
-      case 'temp':
-        return 0;
-      case 'light':
-        return 0;
-      default:
-        return 0;
-    }
-  }
-
-  double getMaxY(String metric) {
-    switch (metric) {
-      case 'rssi':
-        return 0;
-      case 'humidity':
-      case 'soil':
-      case 'water':
-        return 100;
-      case 'temp':
-        return 50;
-      case 'light':
-        return 1000;
-      default:
-        return 100;
-    }
+  // Helper method to build stat items
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[600],
+          ),
+        ),
+        SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
   }
 
   // Update the cleanValue method to also remove duplicate units
