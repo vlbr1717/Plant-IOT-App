@@ -406,6 +406,9 @@ class _HomePageState extends State<HomePage> {
                   final minY = stats.min - yPadding;
                   final maxY = stats.max + yPadding;
                   
+                  // Calculate Y-axis interval
+                  final yInterval = (maxY - minY) / 5;
+                  
                   return Column(
                     children: [
                       Expanded(
@@ -415,7 +418,7 @@ class _HomePageState extends State<HomePage> {
                             titlesData: FlTitlesData(
                               bottomTitles: AxisTitles(
                                 sideTitles: SideTitles(
-                                  showTitles: true,
+                                  showTitles: false,
                                   reservedSize: 30,
                                   interval: 5,
                                 ),
@@ -424,7 +427,26 @@ class _HomePageState extends State<HomePage> {
                                 sideTitles: SideTitles(
                                   showTitles: true,
                                   reservedSize: 50,
-                                  interval: (maxY - minY) / 5, // Dynamic interval
+                                  interval: yInterval,
+                                  getTitlesWidget: (value, meta) {
+                                    // Skip the first and last labels
+                                    if (value == minY || value == maxY) {
+                                      return const Text('');
+                                    }
+                                    return Container(
+                                      width: 45,  // Fixed width container
+                                      alignment: Alignment.centerRight,  // Right align the text
+                                      padding: EdgeInsets.only(right: 8),  // Add some padding from the axis
+                                      child: Text(
+                                        value.toStringAsFixed(1),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                        textAlign: TextAlign.right,  // Right align the text within the Text widget
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                               topTitles: AxisTitles(
@@ -458,13 +480,9 @@ class _HomePageState extends State<HomePage> {
                       ),
                       // Statistics panel
                       Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                        padding: EdgeInsets.symmetric(vertical: 16),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
                             _buildStatItem('Min', stats.min.toStringAsFixed(1), color),
                             _buildStatItem('Avg', stats.avg.toStringAsFixed(1), color),
@@ -486,6 +504,7 @@ class _HomePageState extends State<HomePage> {
   // Helper method to build stat items
   Widget _buildStatItem(String label, String value, Color color) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
