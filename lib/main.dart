@@ -774,37 +774,41 @@ class _HomePageState extends State<HomePage> {
                 child: connectedDevice == null
                     ? Card(
                         elevation: 4,
-                        child: isScanning
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    CircularProgressIndicator(),
-                                    SizedBox(height: 16),
-                                    Text('Scanning for devices...'),
-                                  ],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFF0A4D68).withOpacity(0.1),  // Deep ocean blue with opacity
+                                Color(0xFF088395).withOpacity(0.15),  // Bright sea blue with opacity
+                              ],
+                            ),
+                          ),
+                          clipBehavior: Clip.antiAlias,  // Add this to fix corner issues
+                          child: ListView.builder(
+                            itemCount: scanResults.length,
+                            itemBuilder: (context, index) {
+                              BluetoothDevice device = scanResults[index].device;
+                              return ListTile(
+                                title: Text(
+                                  device.name.isNotEmpty ? device.name : "Unknown Device",
+                                  style: TextStyle(color: primaryColor),  // Use ocean blue for text
                                 ),
-                              )
-                            : scanResults.isEmpty
-                                ? Container()
-                                : ListView.builder(
-                                    itemCount: scanResults.length,
-                                    itemBuilder: (context, index) {
-                                      final result = scanResults[index];
-                                      return ListTile(
-                                        title: Text(
-                                          result.device.platformName.isEmpty
-                                              ? 'Unknown Device'
-                                              : result.device.platformName,
-                                        ),
-                                        subtitle: Text(result.device.remoteId.toString()),
-                                        trailing: ElevatedButton(
-                                          child: Text('Connect'),
-                                          onPressed: () => connectToDevice(result.device),
-                                        ),
-                                      );
-                                    },
-                                  ),
+                                subtitle: Text(
+                                  device.id.toString(),
+                                  style: TextStyle(color: textColor.withOpacity(0.7)),  // Slightly transparent dark blue
+                                ),
+                                onTap: () => connectToDevice(device),
+                                tileColor: Colors.transparent,  // Make tile background transparent
+                              );
+                            },
+                          ),
+                        ),
                       )
                     : Expanded(
                         child: Column(

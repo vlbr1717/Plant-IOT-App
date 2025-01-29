@@ -1,6 +1,6 @@
 {
-    "name": "ble_app",
-    "short_name": "ble_app",
+    "name": "Plant Monitor",
+    "short_name": "Plant Monitor",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
