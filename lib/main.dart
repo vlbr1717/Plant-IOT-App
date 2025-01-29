@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -18,6 +19,55 @@ class BLEService {
   
   Stream<List<int>> readCharacteristic(BluetoothCharacteristic characteristic) {
     return characteristic.lastValueStream;
+  }
+}
+
+class SimulatedDataService {
+  Timer? _timer;
+  final Random _random = Random();
+
+  double generateValue(String metric) {
+    switch (metric) {
+      case 'temp':
+        return 20.0 + _random.nextDouble() * 15; // 20-35°C
+      case 'humidity':
+      case 'soil':
+      case 'water':
+        return _random.nextDouble() * 100; // 0-100%
+      case 'light':
+        return _random.nextDouble() * 1000; // 0-1000 lux
+      case 'rssi':
+        return -100 + _random.nextDouble() * 60; // -100 to -40 dBm
+      case 'time':
+        return _random.nextDouble() * 1000; // 0-1000ms
+      default:
+        return _random.nextDouble() * 100;
+    }
+  }
+
+  String generatePlantType() {
+    final plants = ['Rose', 'Cactus', 'Fern', 'Orchid', 'Succulent'];
+    return plants[_random.nextInt(plants.length)];
+  }
+
+  void startSimulation(Function(String metric, String value) onData) {
+    _timer?.cancel();
+    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      // Simulate data for each metric
+      onData('temp', generateValue('temp').toStringAsFixed(1));
+      onData('humidity', generateValue('humidity').toStringAsFixed(1));
+      onData('light', generateValue('light').toStringAsFixed(0));
+      onData('soil', generateValue('soil').toStringAsFixed(1));
+      onData('water', generateValue('water').toStringAsFixed(1));
+      onData('rssi', generateValue('rssi').toStringAsFixed(0));
+      onData('time', generateValue('time').toStringAsFixed(0));
+      onData('plant_type', generatePlantType());
+    });
+  }
+
+  void stopSimulation() {
+    _timer?.cancel();
+    _timer = null;
   }
 }
 
@@ -93,6 +143,9 @@ class _HomePageState extends State<HomePage> {
     'time': StreamController<List<FlSpot>>.broadcast(),
   };
 
+  bool isDevelopmentMode = true;
+  final SimulatedDataService _simulatedDataService = SimulatedDataService();
+
   void startScan() async {
     setState(() {
       isScanning = true;
@@ -140,6 +193,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> connectToDevice(BluetoothDevice device) async {
+    if (isDevelopmentMode) {
+      setState(() {
+        connectedDevice = device;
+        startDevMode();
+      });
+      return;
+    }
+    
     try {
       // First disconnect any existing connections
       if (connectedDevice != null) {
@@ -257,8 +318,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   void disconnect() async {
+    _simulatedDataService.stopSimulation();
     if (connectedDevice != null) {
-      await connectedDevice!.disconnect();
+      if (!isDevelopmentMode) {
+        await connectedDevice!.disconnect();
+      }
       setState(() {
         connectedDevice = null;
         characteristicValue = "No data";
@@ -266,9 +330,14 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Update the _showGraph method to use the correct metric key
+  // Update the _showGraph method to handle the metric keys correctly
   void _showGraph(String value, String title, Color color) {
-    String metricKey = title.toLowerCase().replaceAll(' ', '_');
+    // Convert title to metric key format
+    String metricKey = title.toLowerCase().replaceAll(' ', '_')
+                           .replaceAll('moisture', '')  // Remove 'moisture' from 'soil moisture'
+                           .replaceAll('level', '')     // Remove 'level' from 'water level'
+                           .replaceAll('temperature', 'temp'); // Convert 'temperature' to 'temp'
+    
     List<FlSpot> history = valueHistory[metricKey] ?? [];
     
     showModalBottomSheet(
@@ -519,6 +588,24 @@ class _HomePageState extends State<HomePage> {
         title: Text('Plant Monitor'),
         centerTitle: true,
         actions: [
+          // Development mode toggle
+          Switch(
+            value: isDevelopmentMode,
+            onChanged: (value) {
+              setState(() {
+                isDevelopmentMode = value;
+                if (isDevelopmentMode) {
+                  // Start simulation if in dev mode and not connected to real device
+                  if (connectedDevice == null) {
+                    startDevMode();
+                  }
+                } else {
+                  // Stop simulation when switching to real mode
+                  _simulatedDataService.stopSimulation();
+                }
+              });
+            },
+          ),
           if (!isScanning && connectedDevice == null)
             IconButton(
               icon: Icon(Icons.refresh),
@@ -624,11 +711,11 @@ class _HomePageState extends State<HomePage> {
                                 // Temperature Box
                                 _buildSensorCard(
                                   icon: Icons.thermostat_outlined,
-                                  title: 'Temperature',
+                                  title: 'Temp',
                                   value: tempValue,
                                   unit: '°C',
                                   color: Colors.orange,
-                                  onTap: () => _showGraph(tempValue, 'Temperature', Colors.orange),
+                                  onTap: () => _showGraph(tempValue, 'Temp', Colors.orange),
                                 ),
                                 // Humidity Box
                                 _buildSensorCard(
@@ -651,20 +738,20 @@ class _HomePageState extends State<HomePage> {
                                 // Soil Moisture Box
                                 _buildSensorCard(
                                   icon: Icons.grass_outlined,
-                                  title: 'Soil Moisture',
+                                  title: 'Soil',
                                   value: soilValue,
                                   unit: '%',
                                   color: Colors.green,
-                                  onTap: () => _showGraph(soilValue, 'Soil Moisture', Colors.green),
+                                  onTap: () => _showGraph(soilValue, 'Soil', Colors.green),
                                 ),
                                 // Water Level Box
                                 _buildSensorCard(
                                   icon: Icons.water_outlined,
-                                  title: 'Water Level',
+                                  title: 'Water',
                                   value: waterValue,
                                   unit: '%',
                                   color: Colors.lightBlue,
-                                  onTap: () => _showGraph(waterValue, 'Water Level', Colors.lightBlue),
+                                  onTap: () => _showGraph(waterValue, 'Water', Colors.lightBlue),
                                 ),
                                 // RSSI Box
                                 _buildSensorCard(
@@ -771,10 +858,51 @@ class _HomePageState extends State<HomePage> {
   // Update dispose method to close all stream controllers
   @override
   void dispose() {
+    _simulatedDataService.stopSimulation();
     for (var controller in _streamControllers.values) {
       controller.close();
     }
     super.dispose();
+  }
+
+  void startDevMode() {
+    _simulatedDataService.startSimulation((metric, value) {
+      setState(() {
+        switch (metric) {
+          case 'temp':
+            tempValue = value;
+            updateHistory('temp', value);
+            break;
+          case 'humidity':
+            humidityValue = value;
+            updateHistory('humidity', value);
+            break;
+          case 'light':
+            lightValue = value;
+            updateHistory('light', value);
+            break;
+          case 'soil':
+            soilValue = value;
+            updateHistory('soil', value);
+            break;
+          case 'water':
+            waterValue = value;
+            updateHistory('water', value);
+            break;
+          case 'rssi':
+            rssiValue = value;
+            updateHistory('rssi', value);
+            break;
+          case 'time':
+            timeValue = value;
+            updateHistory('time', value);
+            break;
+          case 'plant_type':
+            plantTypeValue = value;
+            break;
+        }
+      });
+    });
   }
 }
 
