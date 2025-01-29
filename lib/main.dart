@@ -1025,14 +1025,25 @@ class _HomePageState extends State<HomePage> {
     required String value,
     required Color color,
   }) {
+    // Map of plant types to their respective icons
+    final Map<String, IconData> plantIcons = {
+      'Rose': Icons.local_florist,
+      'Cactus': Icons.grass,
+      'Fern': Icons.eco,
+      'Orchid': Icons.spa,
+      'Succulent': Icons.yard,
+    };
+
+    // Get the current plant's icon or default to local_florist
+    IconData currentIcon = plantIcons[value] ?? Icons.local_florist;
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      child: InkWell( // Add InkWell for tap feedback
+      child: InkWell(
         onTap: () {
-          // Show dropdown when card is tapped
           showDialog(
             context: context,
             builder: (BuildContext context) {
@@ -1044,17 +1055,22 @@ class _HomePageState extends State<HomePage> {
                     shrinkWrap: true,
                     itemCount: plantTypes.length,
                     itemBuilder: (BuildContext context, int index) {
+                      String plant = plantTypes[index];
                       return ListTile(
+                        leading: Icon(
+                          plantIcons[plant] ?? Icons.local_florist,
+                          color: plant == plantTypeValue ? color : Colors.grey,
+                        ),
                         title: Text(
-                          plantTypes[index],
+                          plant,
                           style: TextStyle(
-                            color: plantTypes[index] == plantTypeValue ? color : Colors.black,
-                            fontWeight: plantTypes[index] == plantTypeValue ? FontWeight.bold : FontWeight.normal,
+                            color: plant == plantTypeValue ? color : Colors.black,
+                            fontWeight: plant == plantTypeValue ? FontWeight.bold : FontWeight.normal,
                           ),
                         ),
                         onTap: () {
                           setState(() {
-                            plantTypeValue = plantTypes[index];
+                            plantTypeValue = plant;
                           });
                           Navigator.pop(context);
                         },
@@ -1071,7 +1087,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 40, color: color),
+              Icon(currentIcon, size: 40, color: color),
               SizedBox(height: 8),
               Text(
                 title,
