@@ -107,7 +107,25 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: ThemeData(
-        primarySwatch: Colors.green,
+        primaryColor: Color(0xFF0A4D68),    // Deep ocean blue
+        colorScheme: ColorScheme.light(
+          primary: Color(0xFF0A4D68),
+          secondary: Color(0xFF088395),  // Bright sea blue
+        ),
+        switchTheme: SwitchThemeData(
+          trackColor: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) {
+              return Color(0xFF088395).withOpacity(0.5);
+            }
+            return Colors.grey.withOpacity(0.3);
+          }),
+          thumbColor: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) {
+              return Color(0xFF088395);
+            }
+            return Colors.grey;
+          }),
+        ),
         scaffoldBackgroundColor: Colors.white,
       ),
       home: HomePage(),
@@ -179,6 +197,13 @@ class _HomePageState extends State<HomePage> {
 
   // Add a state variable for pump status
   bool isPumpOn = false;
+
+  // Add these color constants at the top of the _HomePageState class
+  final Color primaryColor = Color(0xFF0A4D68);    // Deep ocean blue
+  final Color secondaryColor = Color(0xFF088395);  // Bright sea blue
+  final Color backgroundColor = Color(0xFFE0F7FA); // Light aqua blue
+  final Color cardColor = Colors.white.withOpacity(0.9);
+  final Color textColor = Color(0xFF05445E);      // Dark ocean blue
 
   void startScan() async {
     setState(() {
@@ -639,219 +664,255 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: backgroundColor,
       appBar: AppBar(
-        title: Text('Plant Monitor'),
-        centerTitle: true,
+        backgroundColor: primaryColor,
+        elevation: 0,
+        title: Text(
+          'Plant Monitor',
+          style: TextStyle(color: Colors.white),
+        ),
         actions: [
-          // Development mode toggle
-          Switch(
-            value: isDevelopmentMode,
-            onChanged: (value) {
-              setState(() {
-                isDevelopmentMode = value;
-                if (isDevelopmentMode) {
-                  // Start simulation if in dev mode and not connected to real device
-                  if (connectedDevice == null) {
-                    startDevMode();
-                  }
-                } else {
-                  // Stop simulation when switching to real mode
-                  _simulatedDataService.stopSimulation();
-                }
-              });
-            },
-          ),
           if (!isScanning && connectedDevice == null)
             IconButton(
-              icon: Icon(Icons.refresh),
+              icon: Icon(Icons.refresh, color: Colors.white),
               onPressed: startScan,
             ),
         ],
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                primaryColor,
+                secondaryColor,
+                Color(0xFF05B9C7),  // Lighter sea blue
+              ],
+            ),
+          ),
+        ),
       ),
-      body: Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Updated Connection Status Card
-            if (connectedDevice == null)
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: EdgeInsets.all(24.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.bluetooth_searching,
-                        size: 64,
-                        color: Colors.blue,
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Connect to Plant Monitor',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        icon: Icon(Icons.search),
-                        label: Text('Start Scanning'),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                        onPressed: startScan,
-                      ),
-                    ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              backgroundColor,
+              Color(0xFFE8F5E9).withBlue(250),  // Light blue-green
+              Colors.white,
+            ],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Updated Connection Status Card
+              if (connectedDevice == null)
+                Card(
+                  elevation: 4,
+                  color: cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                ),
-              ),
-
-            // Device List or Sensor Data
-            Expanded(
-              child: connectedDevice == null
-                  ? Card(
-                      elevation: 4,
-                      child: isScanning
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  CircularProgressIndicator(),
-                                  SizedBox(height: 16),
-                                  Text('Scanning for devices...'),
-                                ],
-                              ),
-                            )
-                          : scanResults.isEmpty
-                              ? Container()
-                              : ListView.builder(
-                                  itemCount: scanResults.length,
-                                  itemBuilder: (context, index) {
-                                    final result = scanResults[index];
-                                    return ListTile(
-                                      title: Text(
-                                        result.device.platformName.isEmpty
-                                            ? 'Unknown Device'
-                                            : result.device.platformName,
-                                      ),
-                                      subtitle: Text(result.device.remoteId.toString()),
-                                      trailing: ElevatedButton(
-                                        child: Text('Connect'),
-                                        onPressed: () => connectToDevice(result.device),
-                                      ),
-                                    );
-                                  },
-                                ),
-                    )
-                  : Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          secondaryColor.withOpacity(0.05),
+                          Color(0xFF05B9C7).withOpacity(0.1),
+                        ],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(24.0),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Icon(
+                            Icons.bluetooth_searching,
+                            size: 64,
+                            color: Colors.white,
+                          ),
+                          SizedBox(height: 16),
                           Text(
-                            'Connected to: ${connectedDevice!.platformName}',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-                          ),
-                          SizedBox(height: 16),
-                          Expanded(
-                            child: GridView.count(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 16,
-                              mainAxisSpacing: 16,
-                              children: [
-                                // Temperature Box
-                                _buildSensorCard(
-                                  icon: Icons.thermostat_outlined,
-                                  title: 'Temp',
-                                  value: tempValue,
-                                  unit: '°C',
-                                  color: Colors.orange,
-                                  onTap: () => _showGraph(tempValue, 'Temp', Colors.orange),
-                                ),
-                                // Humidity Box
-                                _buildSensorCard(
-                                  icon: Icons.water_drop_outlined,
-                                  title: 'Humidity',
-                                  value: humidityValue,
-                                  unit: '%',
-                                  color: Colors.blue,
-                                  onTap: () => _showGraph(humidityValue, 'Humidity', Colors.blue),
-                                ),
-                                // Light Box
-                                _buildSensorCard(
-                                  icon: Icons.light_mode_outlined,
-                                  title: 'Light',
-                                  value: lightValue,
-                                  unit: 'lux',
-                                  color: Colors.amber,
-                                  onTap: () => _showGraph(lightValue, 'Light', Colors.amber),
-                                ),
-                                // Soil Moisture Box
-                                _buildSensorCard(
-                                  icon: Icons.grass_outlined,
-                                  title: 'Soil',
-                                  value: soilValue,
-                                  unit: '%',
-                                  color: Colors.green,
-                                  onTap: () => _showGraph(soilValue, 'Soil', Colors.green),
-                                ),
-                                // Water Level Box
-                                _buildSensorCard(
-                                  icon: Icons.water_outlined,
-                                  title: 'Water',
-                                  value: waterValue,
-                                  unit: '%',
-                                  color: Colors.lightBlue,
-                                  onTap: () => _showGraph(waterValue, 'Water', Colors.lightBlue),
-                                ),
-                                // RSSI Box
-                                _buildSensorCard(
-                                  icon: Icons.signal_cellular_alt,
-                                  title: 'RSSI',
-                                  value: rssiValue,
-                                  unit: 'dBm',
-                                  color: Colors.purple,
-                                  onTap: () => _showGraph(rssiValue, 'RSSI', Colors.purple),
-                                ),
-                                // Plant Type Box
-                                _buildPlantTypeCard(
-                                  icon: Icons.local_florist,
-                                  title: 'Plant Type',
-                                  value: plantTypeValue,
-                                  color: Colors.teal,
-                                ),
-                                // Add Pump Control where Plant Type was
-                                _buildPumpControlCard(
-                                  icon: Icons.water_drop,
-                                  title: 'Pump Control',
-                                  color: Colors.blue,
-                                ),
-                              ],
+                            'Connect to Plant Monitor',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
                           ),
-                          SizedBox(height: 16),
-                          Center(
-                            child: ElevatedButton.icon(
-                              icon: Icon(Icons.bluetooth_disabled),
-                              label: Text('Disconnect'),
-                              style: ElevatedButton.styleFrom(
-                                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
+                          SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            icon: Icon(Icons.search, color: Colors.white),
+                            label: Text('Start Scanning', style: TextStyle(color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: secondaryColor,
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
                               ),
-                              onPressed: disconnect,
                             ),
+                            onPressed: startScan,
                           ),
                         ],
                       ),
                     ),
-            ),
-          ],
+                  ),
+                ),
+
+              // Device List or Sensor Data
+              Expanded(
+                child: connectedDevice == null
+                    ? Card(
+                        elevation: 4,
+                        child: isScanning
+                            ? Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text('Scanning for devices...'),
+                                  ],
+                                ),
+                              )
+                            : scanResults.isEmpty
+                                ? Container()
+                                : ListView.builder(
+                                    itemCount: scanResults.length,
+                                    itemBuilder: (context, index) {
+                                      final result = scanResults[index];
+                                      return ListTile(
+                                        title: Text(
+                                          result.device.platformName.isEmpty
+                                              ? 'Unknown Device'
+                                              : result.device.platformName,
+                                        ),
+                                        subtitle: Text(result.device.remoteId.toString()),
+                                        trailing: ElevatedButton(
+                                          child: Text('Connect'),
+                                          onPressed: () => connectToDevice(result.device),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                      )
+                    : Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Connected to: ${connectedDevice!.platformName}',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                            ),
+                            SizedBox(height: 16),
+                            Expanded(
+                              child: GridView.count(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                children: [
+                                  // Temperature Box
+                                  _buildSensorCard(
+                                    icon: Icons.thermostat_outlined,
+                                    title: 'Temp',
+                                    value: tempValue,
+                                    unit: '°C',
+                                    color: Colors.orange,
+                                    onTap: () => _showGraph(tempValue, 'Temp', Colors.orange),
+                                  ),
+                                  // Humidity Box
+                                  _buildSensorCard(
+                                    icon: Icons.water_drop_outlined,
+                                    title: 'Humidity',
+                                    value: humidityValue,
+                                    unit: '%',
+                                    color: Colors.blue,
+                                    onTap: () => _showGraph(humidityValue, 'Humidity', Colors.blue),
+                                  ),
+                                  // Light Box
+                                  _buildSensorCard(
+                                    icon: Icons.light_mode_outlined,
+                                    title: 'Light',
+                                    value: lightValue,
+                                    unit: 'lux',
+                                    color: Colors.amber,
+                                    onTap: () => _showGraph(lightValue, 'Light', Colors.amber),
+                                  ),
+                                  // Soil Moisture Box
+                                  _buildSensorCard(
+                                    icon: Icons.grass_outlined,
+                                    title: 'Soil',
+                                    value: soilValue,
+                                    unit: '%',
+                                    color: Colors.green,
+                                    onTap: () => _showGraph(soilValue, 'Soil', Colors.green),
+                                  ),
+                                  // Water Level Box
+                                  _buildSensorCard(
+                                    icon: Icons.water_outlined,
+                                    title: 'Water',
+                                    value: waterValue,
+                                    unit: '%',
+                                    color: Colors.lightBlue,
+                                    onTap: () => _showGraph(waterValue, 'Water', Colors.lightBlue),
+                                  ),
+                                  // RSSI Box
+                                  _buildSensorCard(
+                                    icon: Icons.signal_cellular_alt,
+                                    title: 'RSSI',
+                                    value: rssiValue,
+                                    unit: 'dBm',
+                                    color: Colors.purple,
+                                    onTap: () => _showGraph(rssiValue, 'RSSI', Colors.purple),
+                                  ),
+                                  // Plant Type Box
+                                  _buildPlantTypeCard(
+                                    icon: Icons.local_florist,
+                                    title: 'Plant Type',
+                                    value: plantTypeValue,
+                                    color: Colors.teal,
+                                  ),
+                                  // Add Pump Control where Plant Type was
+                                  _buildPumpControlCard(
+                                    icon: Icons.water_drop,
+                                    title: 'Pump Control',
+                                    color: Colors.blue,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            Center(
+                              child: ElevatedButton.icon(
+                                icon: Icon(Icons.bluetooth_disabled, color: Colors.white),
+                                label: Text('Disconnect', style: TextStyle(color: Colors.white)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: secondaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                onPressed: disconnect,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
