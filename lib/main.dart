@@ -738,7 +738,7 @@ class _HomePageState extends State<HomePage> {
                           Icon(
                             Icons.bluetooth_searching,
                             size: 64,
-                            color: Colors.white,
+                            color: secondaryColor,
                           ),
                           SizedBox(height: 16),
                           Text(
@@ -746,7 +746,7 @@ class _HomePageState extends State<HomePage> {
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: primaryColor,
                             ),
                           ),
                           SizedBox(height: 24),
