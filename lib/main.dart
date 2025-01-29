@@ -61,7 +61,6 @@ class SimulatedDataService {
       onData('water', generateValue('water').toStringAsFixed(1));
       onData('rssi', generateValue('rssi').toStringAsFixed(0));
       onData('time', generateValue('time').toStringAsFixed(0));
-      onData('plant_type', generatePlantType());
     });
   }
 
@@ -173,6 +172,9 @@ class _HomePageState extends State<HomePage> {
 
   bool isDevelopmentMode = true;
   final SimulatedDataService _simulatedDataService = SimulatedDataService();
+
+  // Add this list at the class level in _HomePageState
+  final List<String> plantTypes = ['Rose', 'Cactus', 'Fern', 'Orchid', 'Succulent'];
 
   void startScan() async {
     setState(() {
@@ -820,11 +822,10 @@ class _HomePageState extends State<HomePage> {
                                   color: Colors.grey,
                                 ),
                                 // Plant Type Box
-                                _buildSensorCard(
+                                _buildPlantTypeCard(
                                   icon: Icons.local_florist,
                                   title: 'Plant Type',
                                   value: plantTypeValue,
-                                  unit: '',
                                   color: Colors.teal,
                                 ),
                               ],
@@ -945,12 +946,87 @@ class _HomePageState extends State<HomePage> {
             timeValue = value;
             updateHistory('time', value);
             break;
-          case 'plant_type':
-            plantTypeValue = value;
-            break;
         }
       });
     });
+  }
+
+  // Add this new method to build the Plant Type card
+  Widget _buildPlantTypeCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell( // Add InkWell for tap feedback
+        onTap: () {
+          // Show dropdown when card is tapped
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: Text('Select Plant Type'),
+                content: Container(
+                  width: double.minPositive,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: plantTypes.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      return ListTile(
+                        title: Text(
+                          plantTypes[index],
+                          style: TextStyle(
+                            color: plantTypes[index] == plantTypeValue ? color : Colors.black,
+                            fontWeight: plantTypes[index] == plantTypeValue ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            plantTypeValue = plantTypes[index];
+                          });
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+          );
+        },
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 40, color: color),
+              SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                value != "N/A" ? value : plantTypes[0],
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
