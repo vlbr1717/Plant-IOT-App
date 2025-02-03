@@ -100,7 +100,9 @@ class MetricStats {
   }
 }
 
-void main() => runApp(MyApp());
+void main() {
+  runApp(MyApp());
+}
 
 class MyApp extends StatelessWidget {
   @override
@@ -377,7 +379,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Add helper method to setup characteristics
   Future<void> setupCharacteristic(BluetoothCharacteristic characteristic) async {
     try {
       // Try to enable notifications, but continue even if it fails
@@ -386,26 +387,24 @@ class _HomePageState extends State<HomePage> {
         characteristic.lastValueStream.listen((value) {
           if (value.isNotEmpty) {
             String data = String.fromCharCodes(value);
-            print('Notification received for ${characteristic.uuid}: $data');
             setState(() {
               handleCharacteristicValue(characteristic, data);
             });
           }
         });
       } catch (e) {
-        print('Notification setup failed for ${characteristic.uuid}, will try read-only mode');
+        // Silent fail for notification setup
       }
 
       // Always try to read the initial value
       try {
         final initialValue = await characteristic.read();
-        print('Initial read for ${characteristic.uuid}: ${String.fromCharCodes(initialValue)}');
         setState(() {
           String data = String.fromCharCodes(initialValue);
           handleCharacteristicValue(characteristic, data);
         });
       } catch (e) {
-        print('Error reading characteristic ${characteristic.uuid}: $e');
+        // Silent fail for initial read
       }
 
       // Set up periodic reading for characteristics that failed notification setup
@@ -423,60 +422,40 @@ class _HomePageState extends State<HomePage> {
             });
           }
         } catch (e) {
-          print('Error reading characteristic ${characteristic.uuid}: $e');
+          // Silent fail for periodic read
         }
       });
 
     } catch (e) {
-      print('Error setting up characteristic ${characteristic.uuid}: $e');
+      print('Error setting up characteristic ${characteristic.uuid}');
     }
   }
 
-  // Add helper method to handle characteristic values
   void handleCharacteristicValue(BluetoothCharacteristic characteristic, String value) {
     String charUuid = characteristic.uuid.toString().toLowerCase();
-    print('Processing value for $charUuid: $value'); // Debug print
     
     try {
       if (charUuid == PLANT_TYPE_UUID.toLowerCase()) {
-        // Plant type is already a string
         plantTypeValue = value;
-        print('Updated plant type to: $value');
       } else if (charUuid == TIME_UUID.toLowerCase()) {
-        // Time should be an integer
         timeValue = int.parse(value).toString();
-        print('Updated time to: $timeValue');
       } else if (charUuid == RSSI_UUID.toLowerCase()) {
-        // RSSI should be an integer (negative dBm value)
         rssiValue = int.parse(value).toString();
-        print('Updated RSSI to: $rssiValue');
       } else if (charUuid == SOIL_UUID.toLowerCase()) {
-        // Soil moisture as float
         double soilDouble = double.parse(value);
         soilValue = soilDouble.toStringAsFixed(1);
-        print('Updated soil to: $soilValue');
       } else if (charUuid == WATER_UUID.toLowerCase()) {
-        // Water level as float
         double waterDouble = double.parse(value);
         waterValue = waterDouble.toStringAsFixed(1);
-        print('Updated water to: $waterValue');
       } else if (charUuid == HUMIDITY_UUID.toLowerCase()) {
-        // Humidity as float percentage
         double humidityDouble = double.parse(value);
         humidityValue = humidityDouble.toStringAsFixed(1);
-        print('Updated humidity to: $humidityValue');
       } else if (charUuid == TEMP_UUID.toLowerCase()) {
-        // Temperature as float
         double tempDouble = double.parse(value);
         tempValue = tempDouble.toStringAsFixed(1);
-        print('Updated temp to: $tempValue');
       } else if (charUuid == LIGHT_UUID.toLowerCase()) {
-        // Light level as float
         double lightDouble = double.parse(value);
         lightValue = lightDouble.toStringAsFixed(1);
-        print('Updated light to: $lightValue');
-      } else {
-        print('Unknown characteristic UUID: $charUuid'); // Debug unknown UUIDs
       }
 
       // Update graph for numeric values
@@ -485,11 +464,10 @@ class _HomePageState extends State<HomePage> {
           double numericValue = double.parse(value);
           updateGraphData(charUuid, numericValue);
         } catch (e) {
-          print('Error parsing value for graph ${characteristic.uuid}: $e');
+          // Silent fail for graph updates
         }
       }
     } catch (e) {
-      print('Error parsing value for ${characteristic.uuid}: $e - Raw value: $value');
       // Keep N/A if parsing fails
       if (charUuid == PLANT_TYPE_UUID.toLowerCase()) plantTypeValue = "N/A";
       else if (charUuid == TIME_UUID.toLowerCase()) timeValue = "N/A";
@@ -1246,7 +1224,7 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             isPumpOn = !isPumpOn;
             if (!isDevelopmentMode && connectedDevice != null) {
-              _sendPumpCommand(isPumpOn);
+              togglePump(isPumpOn);
             }
           });
         },
@@ -1272,7 +1250,7 @@ class _HomePageState extends State<HomePage> {
                   setState(() {
                     isPumpOn = value;
                     if (!isDevelopmentMode && connectedDevice != null) {
-                      _sendPumpCommand(isPumpOn);
+                      togglePump(isPumpOn);
                     }
                   });
                 },
@@ -1302,6 +1280,42 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print('Error sending pump command: $e');
+    }
+  }
+
+  // Add this method to handle pump control
+  Future<void> togglePump(bool value) async {
+    if (connectedDevice == null) {
+      print('No device connected');
+      return;
+    }
+
+    try {
+      print('Attempting to toggle pump to: ${value ? "ON" : "OFF"}');
+      
+      List<BluetoothService> services = await connectedDevice!.discoverServices();
+      
+      for (var service in services) {
+        if (service.uuid.toString().toLowerCase() == SENSOR_SERVICE_UUID.toLowerCase()) {
+          for (var characteristic in service.characteristics) {
+            if (characteristic.uuid.toString().toLowerCase() == PUMP_UUID.toLowerCase()) {
+              // Convert string "1" or "0" to UTF8 bytes (will give us hex 31 or 30)
+              List<int> valueToWrite = value ? "1".codeUnits : "0".codeUnits;
+              print('Writing value: $valueToWrite');
+              
+              await characteristic.write(valueToWrite);
+              print('Write completed');
+              
+              setState(() {
+                isPumpOn = value;
+              });
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error in pump toggle: $e');
     }
   }
 }
