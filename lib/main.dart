@@ -155,7 +155,7 @@ class _HomePageState extends State<HomePage> {
   static const String HUMIDITY_UUID = "bcefab83-bc07-4601-bd67-973056e7ab40";
   static const String TEMP_UUID = "021c8554-0292-4781-83db-e0e480d9b447";
   static const String LIGHT_UUID = "71cca481-acbc-47c0-b379-dfc5de3e2db5";
-  static const String PUMP_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a9"; // Example UUID, replace with your actual pump UUID
+  static const String PUMP_UUID = "1fdd08f4-a008-44b7-b1d5-df0a4cb2866a";  // Update to match ESP32
 
   // Values for each metric (only declare each variable once)
   String plantTypeValue = "N/A";
@@ -189,7 +189,11 @@ class _HomePageState extends State<HomePage> {
     'rssi': StreamController<List<FlSpot>>.broadcast(),
   };
 
-  bool isDevelopmentMode = true;
+///////////////////////////////////////////////////////////////////////////////////////////////////
+  bool isDevelopmentMode = false; // set to false for real data
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+
   final SimulatedDataService _simulatedDataService = SimulatedDataService();
 
   // Add this list at the class level in _HomePageState
@@ -251,6 +255,16 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void onCharacteristicChanged(BluetoothCharacteristic characteristic) async {
+    // Convert the List<int> to a String
+    String value = String.fromCharCodes(characteristic.lastValue);
+    print('Characteristic ${characteristic.uuid} changed value to: $value'); // Debug print
+
+    setState(() {
+      handleCharacteristicValue(characteristic, value);
+    });
+  }
+
   Future<void> connectToDevice(BluetoothDevice device) async {
     if (isDevelopmentMode) {
       setState(() {
@@ -294,14 +308,19 @@ class _HomePageState extends State<HomePage> {
       bool foundConnectionService = false;
       bool foundSensorService = false;
       
+      print('Found ${services.length} services'); // Debug print
+      
       for (BluetoothService service in services) {
         String serviceUuid = service.uuid.toString().toLowerCase();
+        print('Examining service: $serviceUuid'); // Debug print
         
         if (serviceUuid == CONNECTION_SERVICE_UUID.toLowerCase()) {
           foundConnectionService = true;
+          print('Found Connection Service');
           // Handle connection service characteristics
           for (BluetoothCharacteristic characteristic in service.characteristics) {
             String charUuid = characteristic.uuid.toString().toLowerCase();
+            print('Connection Service Characteristic: $charUuid');
             if ([PLANT_TYPE_UUID.toLowerCase(), 
                  TIME_UUID.toLowerCase(), 
                  RSSI_UUID.toLowerCase()].contains(charUuid)) {
@@ -312,14 +331,17 @@ class _HomePageState extends State<HomePage> {
         
         if (serviceUuid == SENSOR_SERVICE_UUID.toLowerCase()) {
           foundSensorService = true;
+          print('Found Sensor Service');
           // Handle sensor service characteristics
           for (BluetoothCharacteristic characteristic in service.characteristics) {
             String charUuid = characteristic.uuid.toString().toLowerCase();
+            print('Sensor Service Characteristic: $charUuid');
             if ([SOIL_UUID.toLowerCase(),
                  WATER_UUID.toLowerCase(),
                  HUMIDITY_UUID.toLowerCase(),
                  TEMP_UUID.toLowerCase(),
-                 LIGHT_UUID.toLowerCase()].contains(charUuid)) {
+                 LIGHT_UUID.toLowerCase(),
+                 PUMP_UUID.toLowerCase()].contains(charUuid)) {
               await setupCharacteristic(characteristic);
             }
           }
@@ -327,6 +349,9 @@ class _HomePageState extends State<HomePage> {
       }
       
       if (!foundConnectionService || !foundSensorService) {
+        print('Missing required services:');
+        print('Connection Service: $foundConnectionService');
+        print('Sensor Service: $foundSensorService');
         throw Exception('Required services not found');
       }
       
@@ -355,24 +380,125 @@ class _HomePageState extends State<HomePage> {
   // Add helper method to setup characteristics
   Future<void> setupCharacteristic(BluetoothCharacteristic characteristic) async {
     try {
-      await characteristic.setNotifyValue(true);
-      characteristic.lastValueStream.listen((value) {
-        if (value.isNotEmpty) {
-          String data = String.fromCharCodes(value);
-          setState(() {
-            handleCharacteristicValue(characteristic, data);
-          });
+      // Try to enable notifications, but continue even if it fails
+      try {
+        await characteristic.setNotifyValue(true);
+        characteristic.lastValueStream.listen((value) {
+          if (value.isNotEmpty) {
+            String data = String.fromCharCodes(value);
+            print('Notification received for ${characteristic.uuid}: $data');
+            setState(() {
+              handleCharacteristicValue(characteristic, data);
+            });
+          }
+        });
+      } catch (e) {
+        print('Notification setup failed for ${characteristic.uuid}, will try read-only mode');
+      }
+
+      // Always try to read the initial value
+      try {
+        final initialValue = await characteristic.read();
+        print('Initial read for ${characteristic.uuid}: ${String.fromCharCodes(initialValue)}');
+        setState(() {
+          String data = String.fromCharCodes(initialValue);
+          handleCharacteristicValue(characteristic, data);
+        });
+      } catch (e) {
+        print('Error reading characteristic ${characteristic.uuid}: $e');
+      }
+
+      // Set up periodic reading for characteristics that failed notification setup
+      Timer.periodic(Duration(seconds: 1), (timer) async {
+        if (connectedDevice == null) {
+          timer.cancel();
+          return;
+        }
+        try {
+          final value = await characteristic.read();
+          if (value.isNotEmpty) {
+            String data = String.fromCharCodes(value);
+            setState(() {
+              handleCharacteristicValue(characteristic, data);
+            });
+          }
+        } catch (e) {
+          print('Error reading characteristic ${characteristic.uuid}: $e');
         }
       });
 
-      // Read initial value
-      final initialValue = await characteristic.read();
-      setState(() {
-        String data = String.fromCharCodes(initialValue);
-        handleCharacteristicValue(characteristic, data);
-      });
     } catch (e) {
       print('Error setting up characteristic ${characteristic.uuid}: $e');
+    }
+  }
+
+  // Add helper method to handle characteristic values
+  void handleCharacteristicValue(BluetoothCharacteristic characteristic, String value) {
+    String charUuid = characteristic.uuid.toString().toLowerCase();
+    print('Processing value for $charUuid: $value'); // Debug print
+    
+    try {
+      if (charUuid == PLANT_TYPE_UUID.toLowerCase()) {
+        // Plant type is already a string
+        plantTypeValue = value;
+        print('Updated plant type to: $value');
+      } else if (charUuid == TIME_UUID.toLowerCase()) {
+        // Time should be an integer
+        timeValue = int.parse(value).toString();
+        print('Updated time to: $timeValue');
+      } else if (charUuid == RSSI_UUID.toLowerCase()) {
+        // RSSI should be an integer (negative dBm value)
+        rssiValue = int.parse(value).toString();
+        print('Updated RSSI to: $rssiValue');
+      } else if (charUuid == SOIL_UUID.toLowerCase()) {
+        // Soil moisture as float
+        double soilDouble = double.parse(value);
+        soilValue = soilDouble.toStringAsFixed(1);
+        print('Updated soil to: $soilValue');
+      } else if (charUuid == WATER_UUID.toLowerCase()) {
+        // Water level as float
+        double waterDouble = double.parse(value);
+        waterValue = waterDouble.toStringAsFixed(1);
+        print('Updated water to: $waterValue');
+      } else if (charUuid == HUMIDITY_UUID.toLowerCase()) {
+        // Humidity as float percentage
+        double humidityDouble = double.parse(value);
+        humidityValue = humidityDouble.toStringAsFixed(1);
+        print('Updated humidity to: $humidityValue');
+      } else if (charUuid == TEMP_UUID.toLowerCase()) {
+        // Temperature as float
+        double tempDouble = double.parse(value);
+        tempValue = tempDouble.toStringAsFixed(1);
+        print('Updated temp to: $tempValue');
+      } else if (charUuid == LIGHT_UUID.toLowerCase()) {
+        // Light level as float
+        double lightDouble = double.parse(value);
+        lightValue = lightDouble.toStringAsFixed(1);
+        print('Updated light to: $lightValue');
+      } else {
+        print('Unknown characteristic UUID: $charUuid'); // Debug unknown UUIDs
+      }
+
+      // Update graph for numeric values
+      if (value.isNotEmpty && value != "N/A") {
+        try {
+          double numericValue = double.parse(value);
+          updateGraphData(charUuid, numericValue);
+        } catch (e) {
+          print('Error parsing value for graph ${characteristic.uuid}: $e');
+        }
+      }
+    } catch (e) {
+      print('Error parsing value for ${characteristic.uuid}: $e - Raw value: $value');
+      // Keep N/A if parsing fails
+      if (charUuid == PLANT_TYPE_UUID.toLowerCase()) plantTypeValue = "N/A";
+      else if (charUuid == TIME_UUID.toLowerCase()) timeValue = "N/A";
+      else if (charUuid == RSSI_UUID.toLowerCase()) rssiValue = "N/A";
+      else if (charUuid == SOIL_UUID.toLowerCase()) soilValue = "N/A";
+      else if (charUuid == WATER_UUID.toLowerCase()) waterValue = "N/A";
+      else if (charUuid == HUMIDITY_UUID.toLowerCase()) humidityValue = "N/A";
+      else if (charUuid == TEMP_UUID.toLowerCase()) tempValue = "N/A";
+      else if (charUuid == LIGHT_UUID.toLowerCase()) lightValue = "N/A";
     }
   }
 
@@ -571,48 +697,6 @@ class _HomePageState extends State<HomePage> {
     return cleaned;
   }
 
-  // Update the handleCharacteristicValue method
-  void handleCharacteristicValue(BluetoothCharacteristic characteristic, String data) {
-    print('Received data for ${characteristic.uuid}: $data'); // Debug print
-    switch (characteristic.uuid.toString().toLowerCase()) {
-      case PLANT_TYPE_UUID:
-        setState(() {
-          plantTypeValue = data.trim();
-        });
-        break;
-      case TIME_UUID:
-        timeValue = cleanValue(data, 'time');
-        updateHistory('time', cleanValue(data, 'time'));
-        break;
-      case RSSI_UUID:
-        rssiValue = cleanValue(data, 'rssi');
-        updateHistory('rssi', cleanValue(data, 'rssi'));
-        break;
-      case SOIL_UUID:
-        soilValue = cleanValue(data, 'soil');
-        updateHistory('soil', cleanValue(data, 'soil'));
-        break;
-      case WATER_UUID:
-        waterValue = cleanValue(data, 'water');
-        updateHistory('water', cleanValue(data, 'water'));
-        break;
-      case HUMIDITY_UUID:
-        humidityValue = cleanValue(data, 'humidity');
-        updateHistory('humidity', cleanValue(data, 'humidity'));
-        break;
-      case TEMP_UUID:
-        tempValue = cleanValue(data, 'temp');
-        updateHistory('temp', cleanValue(data, 'temp'));
-        break;
-      case LIGHT_UUID:
-        setState(() {
-          lightValue = cleanValue(data, 'light');
-          updateHistory('light', cleanValue(data, 'light'));
-        });
-        break;
-    }
-  }
-
   // Update the updateHistory method to properly handle different metrics
   void updateHistory(String metric, String value) {
     try {
@@ -658,6 +742,40 @@ class _HomePageState extends State<HomePage> {
       dataPointCounter++;
     } catch (e) {
       print('Error updating history for $metric with value $value: $e');
+    }
+  }
+
+  // Helper function to update graph data
+  void updateGraphData(String uuid, double value) {
+    String metricKey;
+    
+    if (uuid == TEMP_UUID) {
+      metricKey = 'temp';
+    } else if (uuid == HUMIDITY_UUID) {
+      metricKey = 'humidity';
+    } else if (uuid == LIGHT_UUID) {
+      metricKey = 'light';
+    } else if (uuid == SOIL_UUID) {
+      metricKey = 'soil';
+    } else if (uuid == WATER_UUID) {
+      metricKey = 'water';
+    } else if (uuid == RSSI_UUID) {
+      metricKey = 'rssi';
+    } else {
+      return;
+    }
+
+    if (valueHistory.containsKey(metricKey)) {
+      setState(() {
+        if (valueHistory[metricKey]!.length >= maxDataPoints) {
+          valueHistory[metricKey]!.removeAt(0);
+        }
+        valueHistory[metricKey]!.add(FlSpot(dataPointCounter.toDouble(), value));
+        dataPointCounter++;
+        
+        // Update stream
+        _streamControllers[metricKey]?.add(valueHistory[metricKey]!);
+      });
     }
   }
 
