@@ -160,7 +160,7 @@ class _HomePageState extends State<HomePage> {
   static const String PUMP_UUID = "1fdd08f4-a008-44b7-b1d5-df0a4cb2866a";  // Update to match ESP32
 
   // Values for each metric (only declare each variable once)
-  String plantTypeValue = "N/A";
+  String plantTypeValue = "Rose";
   String timeValue = "N/A";
   String rssiValue = "N/A";
   String soilValue = "N/A";
@@ -435,9 +435,7 @@ class _HomePageState extends State<HomePage> {
     String charUuid = characteristic.uuid.toString().toLowerCase();
     
     try {
-      if (charUuid == PLANT_TYPE_UUID.toLowerCase()) {
-        plantTypeValue = value;
-      } else if (charUuid == TIME_UUID.toLowerCase()) {
+      if (charUuid == TIME_UUID.toLowerCase()) {
         timeValue = int.parse(value).toString();
       } else if (charUuid == RSSI_UUID.toLowerCase()) {
         rssiValue = int.parse(value).toString();
@@ -469,8 +467,7 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       // Keep N/A if parsing fails
-      if (charUuid == PLANT_TYPE_UUID.toLowerCase()) plantTypeValue = "N/A";
-      else if (charUuid == TIME_UUID.toLowerCase()) timeValue = "N/A";
+      if (charUuid == TIME_UUID.toLowerCase()) timeValue = "N/A";
       else if (charUuid == RSSI_UUID.toLowerCase()) rssiValue = "N/A";
       else if (charUuid == SOIL_UUID.toLowerCase()) soilValue = "N/A";
       else if (charUuid == WATER_UUID.toLowerCase()) waterValue = "N/A";
@@ -1155,13 +1152,13 @@ class _HomePageState extends State<HomePage> {
                       return ListTile(
                         leading: Icon(
                           plantIcons[plant] ?? Icons.local_florist,
-                          color: plant == plantTypeValue ? color : Colors.grey,
+                          color: plant == value ? color : Colors.grey,
                         ),
                         title: Text(
                           plant,
                           style: TextStyle(
-                            color: plant == plantTypeValue ? color : Colors.black,
-                            fontWeight: plant == plantTypeValue ? FontWeight.bold : FontWeight.normal,
+                            color: plant == value ? color : Colors.black,
+                            fontWeight: plant == value ? FontWeight.bold : FontWeight.normal,
                           ),
                         ),
                         onTap: () {
